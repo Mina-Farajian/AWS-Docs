@@ -1,0 +1,63 @@
+SSM replacement of SSH connection 
+
+First, install the ssm agent locally following this: Ubuntu | Windows | Mac.
+if you don't have this command, you should install it on your host:
+curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+sudo dpkg -i session-manager-plugin.deb
+
+Dev SSH
+#######
+For dev instances, run aws configure with dev creds, then run the ssm command on your host:
+aws configure
+aws ssm start-session --target "INSTANCE_ID" --region "eu-west-1" 
+Prod SSH
+
+If you need to run commands on prod EC2s, follow these steps to use ssm instead of ssh :
+1-  use aws configure with your dev creds ( because you can switch roles with it)
+2-  run the command below to generate the token
+
+OUTPUT=$(aws sts assume-role   --role-arn "$arn of role"  --role-session-name "give a name here")
+3- then run the commands below, one by one
+  ACCESS_KEY=$(echo $OUTPUT | jq -r .Credentials.AccessKeyId)
+  SECRET_ACCESS_KEY=$(echo $OUTPUT | jq -r .Credentials.SecretAccessKey)
+  SESSION_TOKEN=$(echo $OUTPUT | jq -r .Credentials.SessionToken)
+
+4- now export them (make them global variables)
+export AWS_ACCESS_KEY_ID=$ACCESS_KEY
+export AWS_SECRET_ACCESS_KEY=$SECRET_ACCESS_KEY
+export AWS_SESSION_TOKEN=$SESSION_TOKEN
+5- then connect to the endpoint:
+aws ssm start-session --target "INSTANCE_ID" --region "eu-west-1" 
+
+Port Forwarding for DB
+Dev replacement for SSH port-forwarding 
+This is an example of how we do the DB port forwarding using ssm and the jump server in development org:
+aws ssm start-session --target "$Instance ID" --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters '{"host":["Host DNS address"],"portNumber":["5432"], "localPortNumber":["5432"]}'
+
+Then you will see something like
+Starting session with SessionId: backend-09e84ce139cf33334
+Port 5432 opened for sessionId backend-09e84ce139cf33334.
+Waiting for connections...
+
+that shows it is waiting for the client connection. as soon as you try to connect to localhost:5432, you will see
+Connection accepted for session [backend-09e84ce139cf33334]
+
+Prod replacement for SSH port-forwarding
+1- Run aws configure with your dev creds
+2- Run
+echo $AWS_SESSION_TOKEN
+unset AWS_SESSION_TOKEN
+3- Assume the role of the prod
+aws sts assume-role \
+  --role-arn "$arn developers-Role" \
+  --role-session-name "put a name" \
+  --serial-number "Your MFA device arn" \
+  --token-code "MFA token code"
+
+4- Use the output of the command below
+export AWS_ACCESS_KEY_ID=
+export AWS_ACCESS_KEY_ID=
+export AWS_SECRET_ACCESS_KEY=
+export AWS_SESSION_TOKEN=
+5- Run
+aws ssm start-session --target "$Instance ID" --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters '{"host":["DB Host DNS Address"],"portNumber":["5432"], "localPortNumber":["5432"]}' 
